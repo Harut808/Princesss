@@ -1,0 +1,17 @@
+[
+  {
+    "name": "✧˚Приват Навсегда✧˚",
+    "priceId": "price_1SdrPx16JKKWmF6ALhEElb5i",
+    "price": 1500
+  },
+  {
+    "name": "✧˚MEGA VIP✧˚",
+    "priceId": "price_1Sdrbr16JKKWmF6A9EZB7yBP",
+    "price": 700
+  },
+  {
+    "name": "premium",
+    "price": 4000,
+    "priceId": "plan_1766785229427"
+  }
+]
