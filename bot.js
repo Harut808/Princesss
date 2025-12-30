@@ -1,16 +1,24 @@
-import { Telegraf, Markup } from "telegraf";
-import dotenv from "dotenv";
+import express from "express";
+import Stripe from "stripe";
 import fs from "fs";
+import dotenv from "dotenv";
+import bodyParser from "body-parser";
+import { Telegraf, Markup } from "telegraf";
 
 dotenv.config();
 
+/* ================== INIT ================== */
+const app = express();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const bot = new Telegraf(process.env.BOT_TOKEN);
+
+const PORT = process.env.PORT || 3000;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const DATA_FILE = "./data.json";
 const SUB_FILE = "./subscriber.json";
 
-// ---------- helpers ----------
+/* ================== HELPERS ================== */
 const read = (file) => {
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"));
@@ -23,12 +31,87 @@ const write = (file, data) => {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 };
 
-// ---------- start ----------
+/* ================== EXPRESS ================== */
+
+// ❗ обычный json для всего
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.send("Server is running");
+});
+
+// ---------- create payment ----------
+app.get("/pay", async (req, res) => {
+  const { price, user } = req.query;
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: "rub",
+          product_data: { name: "Telegram Subscription" },
+          unit_amount: Number(price) * 100,
+        },
+        quantity: 1,
+      },
+    ],
+    metadata: { user },
+    success_url: `${process.env.DOMAIN}/success`,
+    cancel_url: `${process.env.DOMAIN}/cancel`,
+  });
+
+  res.redirect(session.url);
+});
+
+// ---------- STRIPE WEBHOOK (raw ТОЛЬКО ТУТ) ----------
+app.post(
+  "/stripe/webhook",
+  bodyParser.raw({ type: "application/json" }),
+  async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      console.log("❌ Webhook error:", err.message);
+      return res.sendStatus(400);
+    }
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+      const userId = session.metadata.user;
+
+      const link = await bot.telegram.createChatInviteLink(
+        process.env.CHANNEL_ID,
+        { member_limit: 1 }
+      );
+
+      await bot.telegram.sendMessage(
+        userId,
+        `✅ Оплата прошла!\n\n🔗 Одноразовая ссылка:\n${link.invite_link}\n\n⚠️ Работает 1 раз`
+      );
+
+      const subs = read(SUB_FILE);
+      subs.push({ userId, date: Date.now() });
+      write(SUB_FILE, subs);
+    }
+
+    res.json({ received: true });
+  }
+);
+
+/* ================== BOT ================== */
+
 bot.start((ctx) => {
   ctx.reply("Добро пожаловать!\nИспользуй /subscribe");
 });
 
-// ---------- subscribe ----------
 bot.command("subscribe", (ctx) => {
   const plans = read(DATA_FILE);
   if (!plans.length) return ctx.reply("Тарифов нет");
@@ -40,30 +123,23 @@ bot.command("subscribe", (ctx) => {
   ctx.reply("Выбери тариф:", Markup.inlineKeyboard(buttons));
 });
 
-// ---------- select plan ----------
 bot.action(/buy_(.+)/, async (ctx) => {
   const priceId = ctx.match[1];
   const plans = read(DATA_FILE);
   const plan = plans.find((p) => p.priceId === priceId);
   if (!plan) return ctx.reply("Тариф не найден");
 
-  const url =
-    `${process.env.DOMAIN}/pay?price=${plan.price}` +
-    `&user=${ctx.from.id}`;
+  const url = `${process.env.DOMAIN}/pay?price=${plan.price}&user=${ctx.from.id}`;
 
-  ctx.reply(
-    `📦 ${plan.name}\n💰 ${plan.price}₽\n\n👉 Оплатить:\n${url}`
-  );
+  ctx.reply(`📦 ${plan.name}\n💰 ${plan.price}₽\n\n👉 Оплатить:\n${url}`);
 });
 
-// ---------- admin ----------
 bot.command("admin", (ctx) => {
   if (ctx.chat.id !== ADMIN_ID) return;
   ctx.reply("/addplan <name> <price>");
   ctx.reply("/setprice <name> <newPrice>");
 });
 
-// ❗ НЕ ТРОНУТО ❗
 bot.on("text", async (ctx) => {
   const arr = ctx.message.text.split(" ");
 
@@ -102,5 +178,10 @@ bot.on("text", async (ctx) => {
   }
 });
 
+/* ================== START ================== */
+
 bot.launch();
-console.log("🤖 Bot started");
+app.listen(PORT, () => {
+  console.log("🤖 Bot started");
+  console.log("🌍 Server running on port", PORT);
+});
