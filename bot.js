@@ -198,14 +198,16 @@ bot.on("text", async (ctx) => {
 bot.launch({
   webhook: {
     domain: process.env.DOMAIN,
-    port: PORT,
+    port: PORT,       // порт Render
     hookPath: `/bot${process.env.BOT_TOKEN}`
   }
 });
+
 
 // Express сервер
 app.listen(PORT, () => {
   console.log("🤖 Bot started with webhook");
   console.log("🌍 Server running on port", PORT);
 });
+
 
