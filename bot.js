@@ -32,39 +32,49 @@ const write = (file, data) => {
 };
 
 /* ================== EXPRESS ================== */
-
-// ❗ обычный json для всего
-app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.send("Server is running");
+// ❗ JSON ВКЛЮЧАЕМ ВЕЗДЕ, КРОМЕ STRIPE WEBHOOK
+app.use((req, res, next) => {
+  if (req.originalUrl === "/stripe/webhook") {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
 });
 
-// ---------- create payment ----------
+app.get("/", (req, res) => {
+  res.send("✅ Server is running");
+});
+
+/* ---------- CREATE PAYMENT ---------- */
 app.get("/pay", async (req, res) => {
   const { price, user } = req.query;
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    line_items: [
-      {
-        price_data: {
-          currency: "rub",
-          product_data: { name: "Telegram Subscription" },
-          unit_amount: Number(price) * 100,
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      line_items: [
+        {
+          price_data: {
+            currency: "rub",
+            product_data: { name: "Telegram Subscription" },
+            unit_amount: Number(price) * 100,
+          },
+          quantity: 1,
         },
-        quantity: 1,
-      },
-    ],
-    metadata: { user },
-    success_url: `${process.env.DOMAIN}/success`,
-    cancel_url: `${process.env.DOMAIN}/cancel`,
-  });
+      ],
+      metadata: { user },
+      success_url: `${process.env.DOMAIN}/success`,
+      cancel_url: `${process.env.DOMAIN}/cancel`,
+    });
 
-  res.redirect(session.url);
+    res.redirect(session.url);
+  } catch (e) {
+    console.log("❌ PAY ERROR:", e.message);
+    res.sendStatus(500);
+  }
 });
 
-// ---------- STRIPE WEBHOOK (raw ТОЛЬКО ТУТ) ----------
+/* ---------- STRIPE WEBHOOK ---------- */
 app.post(
   "/stripe/webhook",
   bodyParser.raw({ type: "application/json" }),
@@ -79,27 +89,34 @@ app.post(
         process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
-      console.log("❌ Webhook error:", err.message);
+      console.log("❌ WEBHOOK ERROR:", err.message);
       return res.sendStatus(400);
     }
+
+    console.log("🔥 WEBHOOK:", event.type);
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       const userId = session.metadata.user;
 
-      const link = await bot.telegram.createChatInviteLink(
-        process.env.CHANNEL_ID,
-        { member_limit: 1 }
-      );
+      try {
+        const link = await bot.telegram.createChatInviteLink(
+          process.env.CHANNEL_ID,
+          { member_limit: 1 }
+        );
 
-      await bot.telegram.sendMessage(
-        userId,
-        `✅ Оплата прошла!\n\n🔗 Одноразовая ссылка:\n${link.invite_link}\n\n⚠️ Работает 1 раз`
-      );
+        await bot.telegram.sendMessage(
+          userId,
+          `✅ Оплата прошла!\n\n🔗 Одноразовая ссылка:\n${link.invite_link}\n\n⚠️ Работает 1 раз`
+        );
 
-      const subs = read(SUB_FILE);
-      subs.push({ userId, date: Date.now() });
-      write(SUB_FILE, subs);
+        const subs = read(SUB_FILE);
+        subs.push({ userId, date: Date.now() });
+        write(SUB_FILE, subs);
+
+      } catch (e) {
+        console.log("❌ TELEGRAM ERROR:", e.message);
+      }
     }
 
     res.json({ received: true });
@@ -107,7 +124,6 @@ app.post(
 );
 
 /* ================== BOT ================== */
-
 bot.start((ctx) => {
   ctx.reply("Добро пожаловать!\nИспользуй /subscribe");
 });
@@ -131,7 +147,9 @@ bot.action(/buy_(.+)/, async (ctx) => {
 
   const url = `${process.env.DOMAIN}/pay?price=${plan.price}&user=${ctx.from.id}`;
 
-  ctx.reply(`📦 ${plan.name}\n💰 ${plan.price}₽\n\n👉 Оплатить:\n${url}`);
+  ctx.reply(
+    `📦 ${plan.name}\n💰 ${plan.price}₽\n\n👉 Оплатить:\n${url}`
+  );
 });
 
 bot.command("admin", (ctx) => {
@@ -179,7 +197,6 @@ bot.on("text", async (ctx) => {
 });
 
 /* ================== START ================== */
-
 bot.launch();
 app.listen(PORT, () => {
   console.log("🤖 Bot started");
