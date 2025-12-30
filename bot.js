@@ -204,10 +204,5 @@ bot.launch({
 });
 
 
-// Express сервер
-app.listen(PORT, () => {
-  console.log("🤖 Bot started with webhook");
-  console.log("🌍 Server running on port", PORT);
-});
 
 
