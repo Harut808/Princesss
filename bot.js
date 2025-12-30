@@ -195,18 +195,19 @@ bot.on("text", async (ctx) => {
 
 /* ================== START ================== */
 // Запускаем бот через webhook
+const PORT = process.env.PORT || 3000;
+
+// Express
+app.listen(PORT, () => {
+  console.log(`🌍 Server running on port ${PORT}`);
+});
+
+// Telegram bot webhook
 bot.launch({
   webhook: {
     domain: process.env.DOMAIN,
-    port: PORT,       // порт Render
+    port: PORT,
     hookPath: `/bot${process.env.BOT_TOKEN}`
   }
 });
-
-
-app.get('/',(req,res)=>{
-  res.send('hello')
-})
-app.listen(3000)
-
 
