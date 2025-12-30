@@ -12,6 +12,7 @@ const app = express();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+const PORT = process.env.PORT || 3000;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 const DATA_FILE = "./data.json";
 const SUB_FILE = "./subscriber.json";
@@ -29,9 +30,8 @@ const write = (file, data) => {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 };
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 /* ================== EXPRESS ================== */
+// JSON для всего кроме Stripe webhook
 app.use((req, res, next) => {
   if (req.originalUrl === "/stripe/webhook") {
     next();
@@ -104,8 +104,6 @@ app.post(
           process.env.CHANNEL_ID,
           { member_limit: 1 }
         );
-
-        await delay(2000); // задержка 2 секунды
 
         await bot.telegram.sendMessage(
           userId,
@@ -196,17 +194,11 @@ bot.on("text", async (ctx) => {
 });
 
 /* ================== START ================== */
-const PORT = process.env.PORT || 3000;
+// Подключаем Telegraf через webhook к Express
+app.use(bot.webhookCallback(`/bot${process.env.BOT_TOKEN}`));
 
-bot.launch({
-  webhook: {
-    domain: process.env.DOMAIN,
-    port: PORT,
-    hookPath: `/bot${process.env.BOT_TOKEN}`,
-  },
-});
-
-// Express сервер на том же порту
+// Запускаем Express на порту Render
 app.listen(PORT, () => {
-  console.log(`🌍 Server running on port ${PORT}`);
+  console.log("🤖 Bot webhook running");
+  console.log("🌍 Server running on port", PORT);
 });
