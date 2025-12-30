@@ -31,7 +31,7 @@ const write = (file, data) => {
 };
 
 /* ================== EXPRESS ================== */
-// JSON для всего кроме webhook
+// JSON для всего кроме Stripe webhook
 app.use((req, res, next) => {
   if (req.originalUrl === "/stripe/webhook") {
     next();
@@ -97,7 +97,6 @@ app.post(
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       const userId = session.metadata.user;
-
       console.log("👤 USER ID:", userId);
 
       try {
@@ -115,7 +114,6 @@ app.post(
         const subs = read(SUB_FILE);
         subs.push({ userId, date: Date.now() });
         write(SUB_FILE, subs);
-
       } catch (e) {
         console.log("❌ TELEGRAM ERROR:", e.message);
       }
@@ -125,7 +123,7 @@ app.post(
   }
 );
 
-/* ================== BOT ================== */
+/* ================== BOT COMMANDS ================== */
 bot.start((ctx) => {
   ctx.reply("Добро пожаловать!\nИспользуй /subscribe");
 });
@@ -196,8 +194,18 @@ bot.on("text", async (ctx) => {
 });
 
 /* ================== START ================== */
-bot.launch();
+// Запускаем бот через webhook
+bot.launch({
+  webhook: {
+    domain: process.env.DOMAIN,
+    port: PORT,
+    hookPath: `/bot${process.env.BOT_TOKEN}`
+  }
+});
+
+// Express сервер
 app.listen(PORT, () => {
-  console.log("🤖 Bot started");
+  console.log("🤖 Bot started with webhook");
   console.log("🌍 Server running on port", PORT);
 });
+
