@@ -14,7 +14,6 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const PORT = process.env.PORT || 3000;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
-
 const DATA_FILE = "./data.json";
 const SUB_FILE = "./subscriber.json";
 
@@ -32,7 +31,7 @@ const write = (file, data) => {
 };
 
 /* ================== EXPRESS ================== */
-// ❗ JSON ВКЛЮЧАЕМ ВЕЗДЕ, КРОМЕ STRIPE WEBHOOK
+// JSON для всего кроме webhook
 app.use((req, res, next) => {
   if (req.originalUrl === "/stripe/webhook") {
     next();
@@ -99,6 +98,8 @@ app.post(
       const session = event.data.object;
       const userId = session.metadata.user;
 
+      console.log("👤 USER ID:", userId);
+
       try {
         const link = await bot.telegram.createChatInviteLink(
           process.env.CHANNEL_ID,
@@ -109,6 +110,7 @@ app.post(
           userId,
           `✅ Оплата прошла!\n\n🔗 Одноразовая ссылка:\n${link.invite_link}\n\n⚠️ Работает 1 раз`
         );
+        console.log("✅ Ссылка отправлена пользователю");
 
         const subs = read(SUB_FILE);
         subs.push({ userId, date: Date.now() });
@@ -146,10 +148,7 @@ bot.action(/buy_(.+)/, async (ctx) => {
   if (!plan) return ctx.reply("Тариф не найден");
 
   const url = `${process.env.DOMAIN}/pay?price=${plan.price}&user=${ctx.from.id}`;
-
-  ctx.reply(
-    `📦 ${plan.name}\n💰 ${plan.price}₽\n\n👉 Оплатить:\n${url}`
-  );
+  ctx.reply(`📦 ${plan.name}\n💰 ${plan.price}₽\n\n👉 Оплатить:\n${url}`);
 });
 
 bot.command("admin", (ctx) => {
